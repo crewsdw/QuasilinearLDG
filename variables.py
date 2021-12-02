@@ -34,9 +34,9 @@ class Scalar:
 
     def initialize_spectral_distribution(self, grid, growth_rates, initial_energy):
         self.arr = cp.zeros_like(grid.arr)
-        # self.arr[growth_rates > 0] = initial_energy * growth_rates[growth_rates > 0]  #
-        # self.arr += 1.0e-3 * cp.amax(self.arr) * cp.ones_like(grid.arr)
-        self.arr[growth_rates > 0] = initial_energy
+        self.arr[growth_rates > 0] = initial_energy * growth_rates[growth_rates > 0]  #
+        self.arr += 1.0e-3 * cp.amax(self.arr) * cp.ones_like(grid.arr)
+        # self.arr[growth_rates > 0] = initial_energy
 
         plt.figure()
         plt.loglog(grid.arr.flatten(), self.arr.get().flatten(), 'o--')
@@ -65,40 +65,40 @@ class Scalar:
 
         return pv_integral
 
-    def cauchy_transform_grad(self, grid):
-        # for v in self.arr:
-        vr = np.linspace(-3, 6, num=100)
-        vi = np.linspace(0.01, 1, num=100)
-        VR, VI = np.meshgrid(vr, vi, indexing='ij')
-        Z = np.tensordot(vr, np.ones_like(vi), axes=0) + 1.0j * np.tensordot(np.ones_like(vr), vi, axes=0)
-
-        transforms = np.zeros_like(Z) + 0j
-        transforms = transforms.flatten()
-        for idxz, z in enumerate(Z.flatten()):
-            # idx, velocity = grid.get_local_velocity(z)
-            # print(velocity[0])
-            # velocity = grid.get_local_velocity(z)[1]
-            interpolant_cauchy_transform = grid.get_interpolant_cauchy_on_point(z)
-            # print(interpolant_cauchy_transform.shape)
-            # print(self.arr.shape)
-            # quit()
-            interpolated_cauchy_transform = np.tensordot(self.arr.get() / grid.J_host[:, None],
-                                                         interpolant_cauchy_transform, axes=([0, 1], [1, 0]))
-            transforms[idxz] = 1.0 - interpolated_cauchy_transform / (0.25 ** 2.0)
-        # print(transforms)
-        transforms = transforms.reshape((100, 100))
-        plt.figure()
-        plt.contourf(VR, VI, np.real(Z))
-        plt.figure()
-        plt.contourf(VR, VI, np.imag(Z))
-        plt.figure()
-        plt.contourf(VR, VI, np.real(transforms))
-        plt.figure()
-        plt.contourf(VR, VI, np.imag(transforms))
-
-        plt.figure()
-        plt.contour(VR, VI, np.real(transforms), 0, colors='r')
-        plt.contour(VR, VI, np.imag(transforms), 0, colors='g')
-        plt.show()
+    # def cauchy_transform_grad(self, grid):
+    #     # for v in self.arr:
+    #     vr = np.linspace(-3, 6, num=100)
+    #     vi = np.linspace(0.01, 1, num=100)
+    #     VR, VI = np.meshgrid(vr, vi, indexing='ij')
+    #     Z = np.tensordot(vr, np.ones_like(vi), axes=0) + 1.0j * np.tensordot(np.ones_like(vr), vi, axes=0)
+    #
+    #     transforms = np.zeros_like(Z) + 0j
+    #     transforms = transforms.flatten()
+    #     for idxz, z in enumerate(Z.flatten()):
+    #         # idx, velocity = grid.get_local_velocity(z)
+    #         # print(velocity[0])
+    #         # velocity = grid.get_local_velocity(z)[1]
+    #         interpolant_cauchy_transform = grid.get_interpolant_cauchy_on_point(z)
+    #         # print(interpolant_cauchy_transform.shape)
+    #         # print(self.arr.shape)
+    #         # quit()
+    #         interpolated_cauchy_transform = np.tensordot(self.arr.get() / grid.J_host[:, None],
+    #                                                      interpolant_cauchy_transform, axes=([0, 1], [1, 0]))
+    #         transforms[idxz] = 1.0 - interpolated_cauchy_transform / (0.25 ** 2.0)
+    #     # print(transforms)
+    #     transforms = transforms.reshape((100, 100))
+    #     plt.figure()
+    #     plt.contourf(VR, VI, np.real(Z))
+    #     plt.figure()
+    #     plt.contourf(VR, VI, np.imag(Z))
+    #     plt.figure()
+    #     plt.contourf(VR, VI, np.real(transforms))
+    #     plt.figure()
+    #     plt.contourf(VR, VI, np.imag(transforms))
+    #
+    #     plt.figure()
+    #     plt.contour(VR, VI, np.real(transforms), 0, colors='r')
+    #     plt.contour(VR, VI, np.imag(transforms), 0, colors='g')
+    #     plt.show()
 
 

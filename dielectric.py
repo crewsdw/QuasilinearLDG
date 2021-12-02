@@ -14,7 +14,8 @@ def solve_approximate_dielectric_function(distribution, grid_v, grid_k):
     # initialize arrays
     solutions = np.zeros_like(grid_k.arr.flatten())
     growth_rates = np.zeros_like(solutions)
-    guesses = np.linspace(5, 3, num=solutions.shape[0])
+    # guesses = np.linspace(5, 3, num=solutions.shape[0])
+    guess = 5
     # print(guesses)
     # Check out for various grid_k frequencies
     for idx, wave in enumerate(grid_k.arr.flatten()):
@@ -49,56 +50,54 @@ def solve_approximate_dielectric_function(distribution, grid_v, grid_k):
             return np.tensordot(distribution.arr[vidx, :].get(), interpolant_grad_on_point, axes=([1], [0]))[0]
 
         # solve it
-        solutions[idx] = opt.fsolve(func=interpolated_dielectric, x0=np.array([guesses[idx]]))
+        solutions[idx] = opt.fsolve(func=interpolated_dielectric, x0=np.array(guess))
         growth_rates[idx] = np.pi * (grad_on_point(phase_velocity=solutions[idx]) /
                                      interpolated_dielectric_grad(phase_velocity=solutions[idx])) / (wave ** 2.0)
+        guess = solutions[idx]
 
     # reshape solutions
     solutions = solutions.reshape(grid_k.arr.shape)
     growth_rates = growth_rates.reshape(grid_k.arr.shape)
+    growth_rates[(growth_rates < 0) & (np.abs(growth_rates) > 0.9 * np.amax(growth_rates))] = -0.9 * np.amax(growth_rates)
 
     # plot
-    plt.figure()
-    plt.plot(grid_k.arr.flatten(), solutions.flatten(), 'ro--', label='Real part')
-    plt.plot(grid_k.arr.flatten(), 20 * growth_rates.flatten(), 'go--', label=r'Imaginary part, $\times 20$')
-    plt.xlabel(r'Wavenumber $k\lambda_D$'), plt.ylabel(r'Phase velocity $\zeta/v_t$')
-    plt.xlim([0, 0.4]), plt.ylim([-0.5, 5.5])
-    plt.grid(True), plt.legend(loc='best'), plt.tight_layout(), plt.show()
+    # plt.figure()
+    # plt.plot(grid_k.arr.flatten(), solutions.flatten(), 'ro--', label='Real part')
+    # plt.plot(grid_k.arr.flatten(), 20 * growth_rates.flatten(), 'go--', label=r'Imaginary part, $\times 20$')
+    # plt.xlabel(r'Wavenumber $k\lambda_D$'), plt.ylabel(r'Phase velocity $\zeta/v_t$')
+    # # plt.xlim([0, 0.4]) #  , plt.ylim([-0.5, 5.5])
+    # plt.grid(True), plt.legend(loc='best'), plt.tight_layout(), plt.show()
 
     return solutions, growth_rates
 
 
 def diffusion_coefficient(field_distribution, grid_v, grid_k, phase_velocity, growth_rates):
-    k = grid_k.arr.flatten()
-    v = grid_v.arr.flatten()
+    # k = grid_k.arr.flatten()
+    # v = grid_v.arr.flatten()
     # Compute the regularized integrand
     doppler_shifted_f = (phase_velocity[:, :, None, None] - grid_v.arr[None, None, :, :]) * grid_k.arr[:, :, None, None]
     denominator = doppler_shifted_f ** 2.0 + growth_rates[:, :, None, None] ** 2.0
     integrand = (2.0 * np.abs(growth_rates[:, :, None, None]) *
                  field_distribution.arr[:, :, None, None].get() / denominator)
 
-    # non-resonant diffusion coefficient: naive integration
+    # diffusion coefficient: naive integration
     result = np.tensordot(grid_k.global_quads.get(), integrand, axes=([0, 1], [0, 1]))
 
     # Visualize
+    # integrand = integrand.reshape((k.shape[0], v.shape[0]))
+    # K, V = np.meshgrid(k, v, indexing='ij')
+    # cb = np.linspace(np.amin(integrand), np.amax(integrand), num=100)
     # plt.figure()
-    # plt.plot(grid_k.arr.flatten(), integrand[:, :, 30, 5].flatten(), 'o--')
+    # plt.contourf(K, V, integrand, cb)
+    # plt.title('Diffusivity integrand')
+    # plt.xlabel('Wavenumber'), plt.ylabel('Velocity'), plt.colorbar(), plt.tight_layout()
+    #
+    # plt.figure()
+    # plt.plot(grid_v.arr.flatten(), result.flatten(), 'o--')
+    # plt.xlabel(r'Velocity $v/v_t$')
+    # plt.ylabel(r'Diffusivity $D(v)$')
+    # plt.grid(True), plt.tight_layout()
+    #
+    # plt.show()
 
-    integrand = integrand.reshape((k.shape[0], v.shape[0]))
-    K, V = np.meshgrid(k, v, indexing='ij')
-    cb = np.linspace(np.amin(integrand), np.amax(integrand), num=100)
-    plt.figure()
-    plt.contourf(K, V, integrand, cb)
-    plt.title('Diffusivity integrand')
-    plt.xlabel('Wavenumber'), plt.ylabel('Velocity'), plt.colorbar(), plt.tight_layout()
-
-    plt.figure()
-    plt.plot(grid_v.arr.flatten(), result.flatten(), 'o--')
-    plt.xlabel(r'Velocity $v/v_t$')
-    plt.ylabel(r'Diffusivity $D(v)$')
-    plt.grid(True), plt.tight_layout()
-    plt.show()
-
-    plt.show()
-
-    return
+    return result
