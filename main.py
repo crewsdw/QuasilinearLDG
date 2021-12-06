@@ -11,7 +11,7 @@ import stepper
 import matplotlib.pyplot as plt
 
 # elements and order
-elements_v, elements_k, order = 100, 30, 10
+elements_v, elements_k, order = 100, 50, 10
 
 # Set up velocity and wavenumber grids
 grid_v = g.VelocityGrid(low=-20, high=20, elements=elements_v, order=order)
@@ -28,8 +28,9 @@ phase_velocities, growth_rates = dielectric.solve_approximate_dielectric_functio
                                                                       grid_v=grid_v, grid_k=grid_k)
 
 # initialize energy spectrum
+pi2 = 2.0 * np.pi
 field = var.Scalar(resolution=elements_k, order=order)
-field.initialize_spectral_distribution(grid=grid_k, growth_rates=growth_rates, initial_energy=1.0e-6)
+field.initialize_spectral_distribution(grid=grid_k, growth_rates=growth_rates*grid_k.arr, initial_energy=pi2*1000*1e-6)
 
 # Set-up global system
 GlobalSystem = global_system.Global(grid=grid_v)
@@ -39,9 +40,9 @@ initial_dist = distribution.arr.flatten().get()
 initial_spec = field.arr.flatten().get()
 
 # Time info
-dt_initial = 0.45 / (2.0 * cp.amax(growth_rates))
+dt_initial = 0.2 / (2.0 * cp.amax(growth_rates*grid_k.arr))
 print('Initial dt is {:0.3e}'.format(dt_initial))
-steps = 35
+steps = 18
 TimeStepper = stepper.StepperMidpointMethod(dt=dt_initial, resolution_v=elements_v,
                                             resolution_k=elements_k, order=order, steps=steps)
 TimeStepper.main_loop(Distribution=distribution, Spectrum=field, GridV=grid_v, GridK=grid_k, GlobalSystem=GlobalSystem)
@@ -50,38 +51,84 @@ print('All done')
 DummyDistribution = var.Scalar(resolution=elements_v, order=order)
 DummySpectrum = var.Scalar(resolution=elements_k, order=order)
 
+phase_velocities_arr, growth_rates_arr = (np.zeros_like(TimeStepper.saved_spectra.get()),
+                                          np.zeros_like(TimeStepper.saved_spectra.get()))
+diffusivity_arr = np.zeros_like(TimeStepper.saved_arrs.get())
+
+# Mod idx
+mod_idx = 2
+
+total_energy = TimeStepper.kinetic_energy + TimeStepper.field_energy
+
+plt.figure()
+plt.plot(TimeStepper.times.get(), TimeStepper.kinetic_energy.get(), 'o--')
+plt.plot(TimeStepper.times.get(), TimeStepper.field_energy.get(), 'o--')
+plt.xlabel('Time $t$'), plt.ylabel(r'Total Energy'), plt.grid(True), plt.tight_layout()
+
+plt.figure()
+plt.plot(TimeStepper.times.get(), total_energy.get(), 'o--')
+plt.xlabel('Time $t$'), plt.ylabel(r'Total Energy'), plt.grid(True), plt.tight_layout()
+
 plt.figure()
 plt.plot(grid_v.arr.flatten(), initial_dist, 'o--', label=r'$t=0$')
 for idx, time in enumerate(TimeStepper.times):
     # Plot velocity
-    if idx % 10 == 0:
-        plt.plot(grid_v.arr.flatten(), TimeStepper.saved_arrs[idx, :, :].flatten().get(),
+    if idx % mod_idx == 0:
+        plt.plot(grid_v.arr.flatten(), TimeStepper.saved_arrs[idx, :, :].flatten().get(), 'o--',
                 label=r'$t=${:0.3f}'.format(time.get()))
-    else:
-        plt.plot(grid_v.arr.flatten(), TimeStepper.saved_arrs[idx, :, :].flatten().get())
-    # Get growth rates
-    DummyDistribution.arr, DummySpectrum.arr = TimeStepper.saved_arrs[idx, :, :], TimeStepper.saved_spectra[idx, :, :]
-    phase_velocities, growth_rates = dielectric.solve_approximate_dielectric_function(distribution=DummyDistribution,
-                                                                                      grid_v=grid_v, grid_k=grid_k)
-    diffusivity = dielectric.diffusion_coefficient(field_distribution=DummySpectrum,
-                                                   grid_v=grid_v, grid_k=grid_k, phase_velocity=phase_velocities,
-                                                   growth_rates=growth_rates)
+        # else:
+        #     plt.plot(grid_v.arr.flatten(), TimeStepper.saved_arrs[idx, :, :].flatten().get())
+        # Get growth rates
+        DummyDistribution.arr, DummySpectrum.arr = TimeStepper.saved_arrs[idx, :, :], TimeStepper.saved_spectra[idx, :, :]
+        phase_velocities, growth_rates = dielectric.solve_approximate_dielectric_function(distribution=DummyDistribution,
+                                                                                          grid_v=grid_v, grid_k=grid_k)
+        print(phase_velocities_arr.shape)
+        print(phase_velocities.shape)
+        print(idx)
+        phase_velocities_arr[idx, :, :] = phase_velocities
+        growth_rates_arr[idx, :, :] = growth_rates
+        diffusivity = dielectric.diffusion_coefficient(field_distribution=DummySpectrum,
+                                                       grid_v=grid_v, grid_k=grid_k, phase_velocity=phase_velocities,
+                                                       growth_rates=grid_k.arr*growth_rates)
+        diffusivity_arr[idx, :, :] = diffusivity
 plt.xlabel(r'Velocity $v/v_t$'), plt.ylabel(r'Distribution function $f(v)$')
 plt.grid(True), plt.legend(loc='best'), plt.tight_layout()
 
+# Plot dispersion relations
+plt.figure()
+for idx, time in enumerate(TimeStepper.times):
+    if idx % mod_idx == 0:
+        # plt.plot(grid_k.arr.flatten(), phase_velocities_arr[idx, :, :].flatten(),
+        #          label=r'$t=${:0.3f}'.format(time.get()))
+        plt.plot(grid_k.arr.flatten(), grid_k.arr.flatten() * growth_rates_arr[idx, :, :].flatten(),
+                 label=r'$t=${:0.3f}'.format(time.get()))
+plt.xlabel(r'Wavenumber $k\lambda_D$'), plt.ylabel(r'Growth rate $\omega_i(k)$')
+plt.grid(True), plt.legend(loc='best'), plt.tight_layout()
+
+# Plot diffusivities
+plt.figure()
+for idx, time in enumerate(TimeStepper.times):
+    if idx % mod_idx == 0:
+        plt.plot(grid_v.arr.flatten(), diffusivity_arr[idx, :, :].flatten(), 'o--',
+                 label=r'$t=${:0.3f}'.format(time.get()))
+plt.xlabel(r'Velocity $v/v_t$'), plt.ylabel(r'Diffusivity $D(v)$')
+plt.grid(True), plt.legend(loc='best'), plt.tight_layout()
+
+# Plot difference from initial avg_f
 plt.figure()
 plt.plot(grid_v.arr.flatten(), TimeStepper.saved_arrs[-1, :, :].flatten().get() - initial_dist, 'o--')
 plt.xlabel(r'Velocity $v/v_t$'), plt.ylabel(r'Final difference from initial distribution, $\Delta f$')
 plt.grid(True), plt.legend(loc='best'), plt.tight_layout()
 
+# Plot power spectrum
 plt.figure()
 plt.loglog(grid_k.arr.flatten(), initial_spec, 'o--', label=r'$t=0$')
 for idx, time in enumerate(TimeStepper.times):
-    if idx % 10 == 0:
-        plt.plot(grid_k.arr.flatten(), TimeStepper.saved_spectra[idx, :, :].flatten().get(),
+    if idx % mod_idx == 0:
+        plt.loglog(grid_k.arr.flatten(), TimeStepper.saved_spectra[idx, :, :].flatten().get(), 'o--',
                 label=r'$t=${:0.3f}'.format(time.get()))
-    else:
-        plt.plot(grid_k.arr.flatten(), TimeStepper.saved_spectra[idx, :, :].flatten().get())
+    # else:
+    #     plt.plot(grid_k.arr.flatten(), TimeStepper.saved_spectra[idx, :, :].flatten().get())
 plt.xlabel(r'Wavenumber $k\lambda_D$'), plt.ylabel(r'Field spectrum $\mathcal{E}(k)$')
 plt.grid(True), plt.legend(loc='best'), plt.tight_layout()
 

@@ -58,7 +58,7 @@ def solve_approximate_dielectric_function(distribution, grid_v, grid_k):
     # reshape solutions
     solutions = solutions.reshape(grid_k.arr.shape)
     growth_rates = growth_rates.reshape(grid_k.arr.shape)
-    growth_rates[(growth_rates < 0) & (np.abs(growth_rates) > 0.9 * np.amax(growth_rates))] = -0.9 * np.amax(growth_rates)
+    growth_rates[(growth_rates < 0) & (np.abs(growth_rates) > 2 * np.amax(growth_rates))] = -2 * np.amax(growth_rates)
 
     # plot
     # plt.figure()
@@ -75,13 +75,14 @@ def diffusion_coefficient(field_distribution, grid_v, grid_k, phase_velocity, gr
     # k = grid_k.arr.flatten()
     # v = grid_v.arr.flatten()
     # Compute the regularized integrand
-    doppler_shifted_f = (phase_velocity[:, :, None, None] - grid_v.arr[None, None, :, :]) * grid_k.arr[:, :, None, None]
+    doppler_shifted_f = (phase_velocity[:, :, None, None] -
+                         grid_v.arr[None, None, :, :]) * grid_k.arr[:, :, None, None]
     denominator = doppler_shifted_f ** 2.0 + growth_rates[:, :, None, None] ** 2.0
     integrand = (2.0 * np.abs(growth_rates[:, :, None, None]) *
                  field_distribution.arr[:, :, None, None].get() / denominator)
 
     # diffusion coefficient: naive integration
-    result = np.tensordot(grid_k.global_quads.get(), integrand, axes=([0, 1], [0, 1]))
+    result = np.tensordot(grid_k.global_quads_host / grid_k.J_host[:, None], integrand, axes=([0, 1], [0, 1]))
 
     # Visualize
     # integrand = integrand.reshape((k.shape[0], v.shape[0]))

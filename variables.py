@@ -34,8 +34,9 @@ class Scalar:
 
     def initialize_spectral_distribution(self, grid, growth_rates, initial_energy):
         self.arr = cp.zeros_like(grid.arr)
-        self.arr[growth_rates > 0] = initial_energy * growth_rates[growth_rates > 0]  #
-        self.arr += 1.0e-3 * cp.amax(self.arr) * cp.ones_like(grid.arr)
+        self.arr[growth_rates > 0] = initial_energy * (growth_rates[growth_rates > 0] /
+                                                       cp.amax(growth_rates[growth_rates > 0]))
+        self.arr += 1.0e-1 * initial_energy  # * cp.amax(self.arr) * cp.ones_like(grid.arr)
         # self.arr[growth_rates > 0] = initial_energy
 
         plt.figure()
@@ -64,6 +65,14 @@ class Scalar:
         pv_integral = -1.0 * cp.pi * cp.imag(analytic)
 
         return pv_integral
+
+    def zero_moment(self, grid):
+        return cp.tensordot(self.arr,
+                            grid.global_quads / grid.J[:, None], axes=([0, 1], [0, 1]))
+
+    def second_moment(self, grid):
+        return cp.tensordot(self.arr * (0.5 * grid.device_arr ** 2.0),
+                            grid.global_quads / grid.J[:, None], axes=([0, 1], [0, 1]))
 
     # def cauchy_transform_grad(self, grid):
     #     # for v in self.arr:

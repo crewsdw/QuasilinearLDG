@@ -20,6 +20,8 @@ class StepperMidpointMethod:
         self.saved_arrs = cp.zeros((steps, self.res_v, self.order))
         self.saved_spectra = cp.zeros((steps, self.res_k, self.order))
         self.times = cp.zeros(steps)
+        self.kinetic_energy = cp.zeros(steps)
+        self.field_energy = cp.zeros(steps)
 
     def main_loop(self, Distribution, Spectrum, GridV, GridK, GlobalSystem):
         """ Compute time-steps using the implicit midpoint method """
@@ -28,6 +30,8 @@ class StepperMidpointMethod:
             self.implicit_midpoint(Distribution, Spectrum, GridV, GridK, GlobalSystem)
             self.saved_arrs[idx, :, :] = Distribution.arr
             self.saved_spectra[idx, :, :] = Spectrum.arr
+            self.kinetic_energy[idx] = Distribution.second_moment(grid=GridV)
+            self.field_energy[idx] = Spectrum.zero_moment(grid=GridK)
             self.time += self.dt
             self.times[idx] = self.time
             print('Finished step at time {:0.3e}'.format(self.time.get()))
@@ -37,15 +41,19 @@ class StepperMidpointMethod:
         # Compute growth rates
         phase_velocities, growth_rates = dielectric.solve_approximate_dielectric_function(distribution=Distribution,
                                                                                           grid_v=GridV, grid_k=GridK)
-
-        growth_rates = cp.array(growth_rates)
+        # Convert growth rate as phase velocity to frequency
+        growth_rates = GridK.device_arr * cp.array(growth_rates)
 
         # Adjust time-step
-        self.dt = 0.45 / (2.0 * cp.amax(growth_rates))
+        self.dt = 0.2 / (2.0 * cp.amax(growth_rates))
+        # if self.dt > 10:
+        #     self.dt = 10.0 * self.dt / self.dt
+        self.dt = 5.0 * self.dt / self.dt
         print('This dt is {:0.3e}'.format(self.dt.get()))
 
         # Take half-step of spectral energy
-        self.SpectrumHalf.arr = Spectrum.arr + 0.5 * self.dt * (2.0 * growth_rates * Spectrum.arr)
+        # self.SpectrumHalf.arr = Spectrum.arr + 0.5 * self.dt * (2.0 * growth_rates * Spectrum.arr)
+        self.SpectrumHalf.arr = Spectrum.arr * np.exp(2.0 * growth_rates * (self.dt / 2))
 
         # Compute diffusivity at midpoint
         diffusivity = dielectric.diffusion_coefficient(field_distribution=self.SpectrumHalf,
@@ -62,6 +70,6 @@ class StepperMidpointMethod:
         evolve_matrix = cp.matmul(backward_matrix, forward_matrix)
 
         # Evolve
-        Spectrum.arr += self.dt * (2.0 * growth_rates * Spectrum.arr)
+        # Spectrum.arr += self.dt * (2.0 * growth_rates * Spectrum.arr)
+        Spectrum.arr = Spectrum.arr * np.exp(2.0 * growth_rates * self.dt)
         Distribution.arr = cp.matmul(evolve_matrix, Distribution.arr.flatten()).reshape(self.res_v, self.order)
-

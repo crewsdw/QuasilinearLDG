@@ -36,9 +36,6 @@ class DGFlux:
         grad = grid.J[:, None] * self.compute_grad(distribution, grid=grid)
         # flux = diffusivity * grad
         flux = cp.array(diffusivity) * grad
-        # plt.figure()
-        # plt.plot(grid.arr.flatten(), flux.get().flatten(), 'o--')
-        # plt.show()
 
         du_dt = grid.J[:, None] * self.compute_dudt(flux=flux, grid=grid)
         return grad, du_dt
@@ -65,10 +62,6 @@ class DGFlux:
         padded_flux[-1, 0] = 0.0
 
         # "Alternating flux" for gradient: always choose value to the left
-        # print(self.boundary_slices[0])
-        # print(self.boundary_slices_pad[1])
-        # print(padded_flux.shape)
-        # print(num_flux.shape)
         num_flux[self.boundary_slices[0]] = -1.0 * flux[self.boundary_slices[0]]
         num_flux[self.boundary_slices[1]] = cp.roll(padded_flux[self.boundary_slices_pad[0]],
                                                     shift=-1, axis=0)[1:-1]

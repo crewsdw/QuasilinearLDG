@@ -212,6 +212,7 @@ class SpectralGrid:
         # jacobian
         # self.J = 2.0 / self.dx
         self.J = cp.asarray(2.0 / self.dx_grid)
+        self.J_host = self.J.get()
         # plt.figure()
         # x = np.linspace(-500, 500, num=5)
         # X, V = np.meshgrid(x, self.arr.flatten(), indexing='ij')
@@ -224,6 +225,7 @@ class SpectralGrid:
         # global quad weights
         self.global_quads = cp.tensordot(cp.ones(elements),
                                          cp.asarray(self.local_basis.weights), axes=0)
+        self.global_quads_host = self.global_quads.get()
 
         # global translation matrix
         mid_identity = np.tensordot(self.mid_points, np.eye(self.local_basis.order), axes=0)
