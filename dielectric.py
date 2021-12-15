@@ -77,7 +77,7 @@ def diffusion_coefficient(field_distribution, grid_v, grid_k, phase_velocity, gr
     # Compute the regularized integrand
     doppler_shifted_f = (phase_velocity[:, :, None, None] -
                          grid_v.arr[None, None, :, :]) * grid_k.arr[:, :, None, None]
-    denominator = doppler_shifted_f ** 2.0 + growth_rates[:, :, None, None] ** 2.0
+    denominator = doppler_shifted_f ** 2.0 + growth_rates[:, :, None, None] ** 2.0 + 1.0e-10
     integrand = (2.0 * np.abs(growth_rates[:, :, None, None]) *
                  field_distribution.arr[:, :, None, None].get() / denominator)
 

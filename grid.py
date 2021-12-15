@@ -79,8 +79,8 @@ class VelocityGrid:
 
     def stretch_grid(self):
         # Investigate grid mapping
-        alphas, betas = (np.array([0.64, 0.64, 0.64, 0.64]),  # , 0.64]),
-                         np.array([0.5, 0.5, 0.5, 0.5]))  # , 0.5]))
+        alphas, betas = (np.array([0.64, 0.64, 0.64, 0.64, 0.64, 0.64]),  # , 0.64]),
+                         np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5]))  # , 0.5]))
         # plt.figure()
         # plt.plot(self.arr.flatten(), self.iterate_map_asym(self.arr, alphas[:-2], betas[:-2]).flatten(),
         #          'k', label=r'Iteration 1')

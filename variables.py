@@ -32,12 +32,16 @@ class Scalar:
                                                                drift_velocity=vb)
         self.grad2 = (grad2_max0 + chi * grad2_max1) / (1 + chi)
 
+    # NOTE: Try using the QL theory for a distribution on a finite grid, where there is no mode of zero growth rate
     def initialize_spectral_distribution(self, grid, growth_rates, initial_energy):
         self.arr = cp.zeros_like(grid.arr)
-        self.arr[growth_rates > 0] = initial_energy * (growth_rates[growth_rates > 0] /
+        self.arr[growth_rates > 0] = initial_energy * ((growth_rates[growth_rates > 0]) /
                                                        cp.amax(growth_rates[growth_rates > 0]))
-        self.arr += 1.0e-1 * initial_energy  # * cp.amax(self.arr) * cp.ones_like(grid.arr)
+
+        # self.arr = cp.asarray(initial_energy * (growth_rates - cp.amin(growth_rates)) / cp.amax(growth_rates))
+        # self.arr[growth_rates < 0] += 1.0e-1 * initial_energy  # * cp.amax(self.arr) * cp.ones_like(grid.arr)
         # self.arr[growth_rates > 0] = initial_energy
+        self.arr[:, :] = initial_energy
 
         plt.figure()
         plt.loglog(grid.arr.flatten(), self.arr.get().flatten(), 'o--')

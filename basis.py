@@ -186,6 +186,10 @@ class LGLBasis1D:
         self.derivative_matrix = None
         self.set_deriv_matrix()
 
+        # Compute quadratic flux matrix
+        self.quadratic_flux_matrix = None
+        self.set_quadratic_flux_matrix()
+
     def set_eigenvalues(self):
         evs = np.array([(2.0 * s + 1) / 2.0 for s in range(self.order - 1)])
         return np.append(evs, (self.order - 1) / 2.0)
@@ -246,8 +250,6 @@ class LGLBasis1D:
 
     def set_numerical_flux_matrix(self):
         self.numerical = cp.asarray(self.inv_mass[:, np.array([0, -1])])
-        # print(self.numerical)
-        # quit()
 
     def set_translation_matrix(self):
         """ Create the translation matrix for velocity DG method """
@@ -264,6 +266,35 @@ class LGLBasis1D:
             for i in range(self.order)])
         # Multiply by inverse mass matrix
         self.translation_matrix = np.matmul(self.inv_mass, translation_mass) + 0j
+
+    def set_quadratic_flux_matrix(self):
+        """ Integrate the internal discretization matrix <psi_s' | psi_j psi_k> of order 3n-4
+            which is done using a GL quadrature of order 2m-1 = 3n-4 -> m = 3(n-1)/2 """
+        local_order = 3 * (self.order - 1) // 2  # note: order must be odd, or round up
+        gl_nodes, gl_weights = poly.legendre.leggauss(local_order)
+        # Evaluate Legendre polynomials at finer grid
+        ps = np.array([sp.legendre(s)(gl_nodes) for s in range(self.order)])
+        ps_prime = np.array([sp.legendre(s).deriv()(gl_nodes) for s in range(self.order)])
+        # Interpolation polynomials at fine points
+        ell = np.tensordot(self.inv_vandermonde, ps, axes=([0], [0]))
+        # Interpolation derivative at fine points
+        ell_prime = np.tensordot(self.inv_vandermonde, ps_prime, axes=([0], [0]))
+        # Compute the matrix elements
+        quadratic_matrix = np.array([[[
+            sum(gl_weights[s] * ell_prime[i, s] * ell[j, s] * ell[k, s] for s in range(local_order))
+            for k in range(self.order)]
+            for j in range(self.order)]
+            for i in range(self.order)]
+        )
+        # print(quadratic_matrix[1, 3, 5])
+        # print(quadratic_matrix[1, 5, 3])
+
+        # Multiply by inverse mass matrix
+        self.quadratic_flux_matrix = cp.asarray(np.tensordot(self.inv_mass, quadratic_matrix,
+                                                             axes=([1], [0])))
+        # print(self.quadratic_flux_matrix[1, 3, 5])
+        # print(self.quadratic_flux_matrix[1, 5, 3])
+        # quit()
 
     def fourier_transform_array(self, midpoints, J, wave_numbers):
         """
