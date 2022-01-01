@@ -190,6 +190,10 @@ class LGLBasis1D:
         self.quadratic_flux_matrix = None
         self.set_quadratic_flux_matrix()
 
+        # Compute quadratic source matrix
+        self.quadratic_source_matrix = None
+        self.set_quadratic_source_matrix()
+
     def set_eigenvalues(self):
         evs = np.array([(2.0 * s + 1) / 2.0 for s in range(self.order - 1)])
         return np.append(evs, (self.order - 1) / 2.0)
@@ -267,10 +271,31 @@ class LGLBasis1D:
         # Multiply by inverse mass matrix
         self.translation_matrix = np.matmul(self.inv_mass, translation_mass) + 0j
 
+    def set_quadratic_source_matrix(self):
+        """ Integrate the internal discretization matrix <psi_s | psi_j psi_k> of order 3n-3
+            which is done using a GL quadrature of order 2m-1 = 3n-3 -> m = ceil(3n/2-1) """
+        local_order = np.int(np.ceil(3 * self.order / 2 - 1))
+        gl_nodes, gl_weights = poly.legendre.leggauss(local_order)
+        # Evaluate Legendre polynomials at finer grid
+        ps = np.array([sp.legendre(s)(gl_nodes) for s in range(self.order)])
+        ps_prime = np.array([sp.legendre(s).deriv()(gl_nodes) for s in range(self.order)])
+        # Interpolation polynomials at fine points
+        ell = np.tensordot(self.inv_vandermonde, ps, axes=([0], [0]))
+        # Compute the matrix elements
+        quadratic_matrix = np.array([[[
+            sum(gl_weights[s] * ell[i, s] * ell[j, s] * ell[k, s] for s in range(local_order))
+            for k in range(self.order)]
+            for j in range(self.order)]
+            for i in range(self.order)]
+        )
+        # Multiply by inverse mass matrix
+        self.quadratic_source_matrix = cp.asarray(np.tensordot(self.inv_mass, quadratic_matrix,
+                                                                axes=([1], [0])))
+
     def set_quadratic_flux_matrix(self):
         """ Integrate the internal discretization matrix <psi_s' | psi_j psi_k> of order 3n-4
-            which is done using a GL quadrature of order 2m-1 = 3n-4 -> m = 3(n-1)/2 """
-        local_order = 3 * (self.order - 1) // 2  # note: order must be odd, or round up
+            which is done using a GL quadrature of order 2m-1 = 3n-4 -> m = ceil(3(n-1)/2) """
+        local_order = np.int(np.ceil(3 * (self.order - 1) / 2))  # note: order must be odd, or round up
         gl_nodes, gl_weights = poly.legendre.leggauss(local_order)
         # Evaluate Legendre polynomials at finer grid
         ps = np.array([sp.legendre(s)(gl_nodes) for s in range(self.order)])
@@ -292,64 +317,61 @@ class LGLBasis1D:
         # Multiply by inverse mass matrix
         self.quadratic_flux_matrix = cp.asarray(np.tensordot(self.inv_mass, quadratic_matrix,
                                                              axes=([1], [0])))
-        # print(self.quadratic_flux_matrix[1, 3, 5])
-        # print(self.quadratic_flux_matrix[1, 5, 3])
-        # quit()
 
-    def fourier_transform_array(self, midpoints, J, wave_numbers):
-        """
-        Grid-dependent spectral coefficient matrix
-        Needs grid quantities: Jacobian, wave numbers, nyquist number
-        """
-        # Check sign of wave-numbers (see below)
-        signs = np.sign(wave_numbers)
-        signs[np.where(wave_numbers == 0)] = 1.0
-
-        # Fourier-transformed modal basis ( (-1)^s accounts for scipy's failure to have negative spherical j argument )
-        p_tilde = np.array([(signs ** s) * np.exp(-1j * np.pi / 2.0 * s) *
-                            sp.spherical_jn(s, np.absolute(wave_numbers) / J) for s in range(self.order)])
-
-        # Multiply by inverse Vandermonde transpose for fourier-transformed nodal basis
-        ell_tilde = np.matmul(self.inv_vandermonde.T, p_tilde)
-
-        # Outer product with phase factors
-        phase = np.exp(-1j * np.tensordot(midpoints, wave_numbers, axes=0))
-        transform_array = np.multiply(phase[:, :, None], ell_tilde.T)
-
-        # Put in order (resolution, nodes, modes)
-        transform_array = np.transpose(transform_array, (0, 2, 1))
-
-        # Return as cupy array
-        return cp.asarray(transform_array)
-
-    def inverse_transform_array(self, midpoints, J, wave_numbers):
-        """
-        Grid-dependent spectral coefficient matrix
-        Experimental inverse-transform matrix
-        """
-        # Check sign (see below)
-        signs = np.sign(wave_numbers)
-        signs[np.where(wave_numbers == 0)] = 1.0
-        # wave_numbers[np.where(wave_numbers == 0)] = 1.0
-
-        # Inverse transform array
-        # p_tilde = np.array([(signs ** s) * np.exp(1j * np.pi / 2.0 * s) *
-        #                     (sp.spherical_jn(s, np.absolute(wave_numbers) / J)) for s in range(self.order)])
-        # Multiply by Vandermonde matrix
-        # next_step = np.matmul(self.vandermonde.T, p_tilde)
-        vandermonde_contraction = np.array(sum(self.vandermonde[i, :] for i in range(self.order)))
-        spherical_summation = np.array(sum((signs ** s) * ((-1j) ** s) *  # np.exp(-1j * np.pi / 2.0 * s) *
-                                           (sp.spherical_jn(s, np.absolute(wave_numbers) / J)) for s in
-                                           range(self.order)))
-        # print(vandermonde_contraction.shape)
-        # print(spherical_contraction.shape)
-
-        # Outer product with phase factors
-        phase = np.exp(1j * np.tensordot(midpoints, wave_numbers, axes=0))
-        next_step = np.divide(phase, spherical_summation[None, :])
-        inverse_transform = np.transpose(np.tensordot(next_step, vandermonde_contraction, axes=0),
-                                         axes=(0, 2, 1))
-        # print(inverse_transform.shape)
-        # inverse_transform = np.multiply(phase[:, None, :], next_step[None, :, :])
-
-        return cp.asarray(inverse_transform)
+    # def fourier_transform_array(self, midpoints, J, wave_numbers):
+    #     """
+    #     Grid-dependent spectral coefficient matrix
+    #     Needs grid quantities: Jacobian, wave numbers, nyquist number
+    #     """
+    #     # Check sign of wave-numbers (see below)
+    #     signs = np.sign(wave_numbers)
+    #     signs[np.where(wave_numbers == 0)] = 1.0
+    #
+    #     # Fourier-transformed modal basis ((-1)^s accounts for scipy's failure to have negative spherical j argument)
+    #     p_tilde = np.array([(signs ** s) * np.exp(-1j * np.pi / 2.0 * s) *
+    #                         sp.spherical_jn(s, np.absolute(wave_numbers) / J) for s in range(self.order)])
+    #
+    #     # Multiply by inverse Vandermonde transpose for fourier-transformed nodal basis
+    #     ell_tilde = np.matmul(self.inv_vandermonde.T, p_tilde)
+    #
+    #     # Outer product with phase factors
+    #     phase = np.exp(-1j * np.tensordot(midpoints, wave_numbers, axes=0))
+    #     transform_array = np.multiply(phase[:, :, None], ell_tilde.T)
+    #
+    #     # Put in order (resolution, nodes, modes)
+    #     transform_array = np.transpose(transform_array, (0, 2, 1))
+    #
+    #     # Return as cupy array
+    #     return cp.asarray(transform_array)
+    #
+    # def inverse_transform_array(self, midpoints, J, wave_numbers):
+    #     """
+    #     Grid-dependent spectral coefficient matrix
+    #     Experimental inverse-transform matrix
+    #     """
+    #     # Check sign (see below)
+    #     signs = np.sign(wave_numbers)
+    #     signs[np.where(wave_numbers == 0)] = 1.0
+    #     # wave_numbers[np.where(wave_numbers == 0)] = 1.0
+    #
+    #     # Inverse transform array
+    #     # p_tilde = np.array([(signs ** s) * np.exp(1j * np.pi / 2.0 * s) *
+    #     #                     (sp.spherical_jn(s, np.absolute(wave_numbers) / J)) for s in range(self.order)])
+    #     # Multiply by Vandermonde matrix
+    #     # next_step = np.matmul(self.vandermonde.T, p_tilde)
+    #     vandermonde_contraction = np.array(sum(self.vandermonde[i, :] for i in range(self.order)))
+    #     spherical_summation = np.array(sum((signs ** s) * ((-1j) ** s) *  # np.exp(-1j * np.pi / 2.0 * s) *
+    #                                        (sp.spherical_jn(s, np.absolute(wave_numbers) / J)) for s in
+    #                                        range(self.order)))
+    #     # print(vandermonde_contraction.shape)
+    #     # print(spherical_contraction.shape)
+    #
+    #     # Outer product with phase factors
+    #     phase = np.exp(1j * np.tensordot(midpoints, wave_numbers, axes=0))
+    #     next_step = np.divide(phase, spherical_summation[None, :])
+    #     inverse_transform = np.transpose(np.tensordot(next_step, vandermonde_contraction, axes=0),
+    #                                      axes=(0, 2, 1))
+    #     # print(inverse_transform.shape)
+    #     # inverse_transform = np.multiply(phase[:, None, :], next_step[None, :, :])
+    #
+    #     return cp.asarray(inverse_transform)

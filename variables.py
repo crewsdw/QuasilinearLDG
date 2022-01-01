@@ -52,17 +52,22 @@ class Scalar:
 
     def compute_grad(self, grid):
         self.grad = cp.tensordot(self.arr,
-                            grid.local_basis.derivative_matrix, axes=([1], [0])) * grid.J[:, None]
+                                 grid.local_basis.derivative_matrix, axes=([1], [0])) * grid.J[:, None]
 
     def compute_second_grad(self, grid):
         self.grad2 = cp.tensordot(self.grad,
-                            grid.local_basis.derivative_matrix, axes=([1], [0])) * grid.J[:, None]
+                                  grid.local_basis.derivative_matrix, axes=([1], [0])) * grid.J[:, None]
 
     def fourier_transform(self, grid):
         self.arr_spectral = np.tensordot(self.arr, grid.fourier_quads, axes=([0, 1], [1, 2]))
 
     def fourier_grad(self, grid):
-        self.grad_spectral = np.tensordot(self.grad, grid.fourier_quads, axes=([0, 1], [1, 2]))
+        # self.grad_spectral = np.tensordot(self.grad, grid.fourier_quads, axes=([0, 1], [1, 2]))
+        self.grad_spectral = 1j * grid.modes * self.arr_spectral
+
+        # plt.figure()
+        # plt.plot(grid.modes.get(), self.grad_spectral.get(), 'o--')
+        # plt.show()
 
     def hilbert_transform_grad(self, grid):
         analytic = cp.sum(2.0 * self.grad_spectral[None, None, :] * grid.grid_phases, axis=2)
@@ -78,40 +83,36 @@ class Scalar:
         return cp.tensordot(self.arr * (0.5 * grid.device_arr ** 2.0),
                             grid.global_quads / grid.J[:, None], axes=([0, 1], [0, 1]))
 
-    # def cauchy_transform_grad(self, grid):
-    #     # for v in self.arr:
-    #     vr = np.linspace(-3, 6, num=100)
-    #     vi = np.linspace(0.01, 1, num=100)
-    #     VR, VI = np.meshgrid(vr, vi, indexing='ij')
-    #     Z = np.tensordot(vr, np.ones_like(vi), axes=0) + 1.0j * np.tensordot(np.ones_like(vr), vi, axes=0)
-    #
-    #     transforms = np.zeros_like(Z) + 0j
-    #     transforms = transforms.flatten()
-    #     for idxz, z in enumerate(Z.flatten()):
-    #         # idx, velocity = grid.get_local_velocity(z)
-    #         # print(velocity[0])
-    #         # velocity = grid.get_local_velocity(z)[1]
-    #         interpolant_cauchy_transform = grid.get_interpolant_cauchy_on_point(z)
-    #         # print(interpolant_cauchy_transform.shape)
-    #         # print(self.arr.shape)
-    #         # quit()
-    #         interpolated_cauchy_transform = np.tensordot(self.arr.get() / grid.J_host[:, None],
-    #                                                      interpolant_cauchy_transform, axes=([0, 1], [1, 0]))
-    #         transforms[idxz] = 1.0 - interpolated_cauchy_transform / (0.25 ** 2.0)
-    #     # print(transforms)
-    #     transforms = transforms.reshape((100, 100))
-    #     plt.figure()
-    #     plt.contourf(VR, VI, np.real(Z))
-    #     plt.figure()
-    #     plt.contourf(VR, VI, np.imag(Z))
-    #     plt.figure()
-    #     plt.contourf(VR, VI, np.real(transforms))
-    #     plt.figure()
-    #     plt.contourf(VR, VI, np.imag(transforms))
-    #
-    #     plt.figure()
-    #     plt.contour(VR, VI, np.real(transforms), 0, colors='r')
-    #     plt.contour(VR, VI, np.imag(transforms), 0, colors='g')
-    #     plt.show()
 
+class EnergySpectrum:
+    def __init__(self):
+        self.arr = None
 
+    def initialize_spectral_distribution(self, grid, growth_rates, initial_energy):
+        self.arr = cp.zeros_like(grid.device_arr)
+        # Like growth rates
+        self.arr[growth_rates > 0] = initial_energy * (growth_rates[growth_rates > 0] /
+                                                       cp.amax(growth_rates[growth_rates > 0]))
+        # gaussian function
+        self.arr[:] = initial_energy * cp.exp(-1000 * (grid.device_arr - 0.25) ** 2.0)
+
+    def initialize_spectral_distribution_velocity(self, grid, initial_energy):
+        # self.arr = cp.zeros_like(grid.device_arr)
+        # gaussian function
+        self.arr = initial_energy * cp.exp(-5 * (grid.device_arr - 4.1) ** 2.0)
+        # remove parts
+        self.arr[grid.device_arr < 2] = 0
+        self.arr[grid.device_arr > 10] = 0
+
+    def zero_moment_continuum(self, grid):
+        return cp.tensordot(self.arr,
+                            grid.global_quads / grid.J[:, None], axes=([0, 1], [0, 1]))
+
+    def zero_moment_continuum_velocity(self, grid):
+        integrand = cp.nan_to_num(self.arr / (grid.device_arr ** 2.0))
+        integral = cp.tensordot(integrand, grid.global_quads / grid.J[:, None], axes=([0, 1], [0, 1]))
+        # print(integral)
+        return integral
+
+    def zero_moment_finite_interval(self):
+        return self.arr.sum()

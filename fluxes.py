@@ -8,9 +8,8 @@ def basis_product(flux, basis_arr, axis):
     return cp.tensordot(flux, basis_arr,
                         axes=([axis], [1]))
 
+
 def quadratic_basis_product(flux, basis_arr, axes):
-    # print(flux.shape)
-    # print(basis_arr.shape)
     return cp.tensordot(flux, basis_arr,
                         axes=(axes, [1, 2]))
 
