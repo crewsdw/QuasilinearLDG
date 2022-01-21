@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import time as timer
 
 
-def solve_approximate_dielectric_function(distribution, grid_v, grid_k):
+def solve_approximate_dielectric_function(distribution, grid_v, grid_k, previous_guess=None):
     # Compute p.v. integral via Hilbert transform of distribution
     # distribution.compute_grad(grid=grid_v)
     # distribution.compute_second_grad(grid=grid_v)
@@ -16,26 +16,39 @@ def solve_approximate_dielectric_function(distribution, grid_v, grid_k):
     # initialize arrays
     solutions = np.zeros_like(grid_k.arr.flatten())
     growth_rates = np.zeros_like(solutions)
-    approx_plasma = np.zeros_like(solutions)
-    om_bohmgross = np.zeros_like(solutions)
-    approx_bohmgross = np.zeros_like(solutions)
-    guess = 5.6
+    # approx_plasma = np.zeros_like(solutions)
+    # om_bohmgross = np.zeros_like(solutions)
+    # approx_bohmgross = np.zeros_like(solutions)
+    if previous_guess:
+        guess = previous_guess  # 6.1  # 5.6
+    else:
+        previous_guess = 5.8
     # Check out for various grid_k frequencies
     for idx, wave in enumerate(grid_k.arr.flatten()):
-        dielectric = 1.0 - pv_integral / (wave ** 2.0)
+        # dielectric = 1.0 - pv_integral / (wave ** 2.0)
+        dielectric = wave ** 2.0 - pv_integral
         if cp.amin(dielectric) > 0:
             continue
-
+        if idx == 0:
+            guess = previous_guess
+        if idx == 1:
+            guess = 5.8
         # print('Examining wave {:0.2f}'.format(wave))
+        # if idx <= 1:
+        #     plt.figure()
+        #     plt.plot(grid_v.arr.flatten(), dielectric.get().flatten(), 'o--')
+        #     plt.plot([guess, guess], [-5, 5], '--')
+        #     plt.grid(True), plt.tight_layout(), plt.show()
 
-        # plt.figure()
-        # plt.plot(grid_v.arr.flatten(), dielectric.get().flatten(), 'o--')
-        # plt.grid(True), plt.tight_layout(), plt.show()
         def interpolated_dielectric(phase_velocity):
+            phase_velocity = phase_velocity[0]
             vidx, velocity = grid_v.get_local_velocity(phase_velocity=
                                                        phase_velocity)
+            # print(velocity)
             interpolant_on_point = grid_v.get_interpolant_on_point(velocity=velocity)
             dielectric_on_point = np.tensordot(dielectric[vidx, :].get(), interpolant_on_point, axes=([1], [0]))
+            # print(dielectric_on_point)
+            # quit()
             return dielectric_on_point[0]
 
         def interpolated_dielectric_grad(phase_velocity):
@@ -53,10 +66,10 @@ def solve_approximate_dielectric_function(distribution, grid_v, grid_k):
             return np.tensordot(distribution.arr[vidx, :].get(), interpolant_grad_on_point, axes=([1], [0]))[0]
 
         # solve it
-        solutions[idx] = opt.fsolve(func=interpolated_dielectric, x0=np.array(guess),
-                                    fprime=interpolated_dielectric_grad)
+        solutions[idx] = opt.fsolve(func=interpolated_dielectric, x0=np.array(guess))  # ,
+                                    # fprime=interpolated_dielectric_grad)
         growth_rates[idx] = np.pi * (grad_on_point(phase_velocity=solutions[idx]) /
-                                     interpolated_dielectric_grad(phase_velocity=solutions[idx])) / wave ** 2.0
+                                     interpolated_dielectric_grad(phase_velocity=solutions[idx]))  # / wave ** 2.0
         guess = solutions[idx]
 
     # t2 = timer.time()
@@ -72,7 +85,7 @@ def solve_approximate_dielectric_function(distribution, grid_v, grid_k):
     # growth_rates_om = growth_rates * grid_k.arr
     # growth_rates[np.abs(growth_rates_om) < 5.0e-3] = -1.0e-1
 
-    return solutions, growth_rates
+    return solutions, growth_rates, solutions[0]
 
 
 def diffusion_coefficient_finite_interval(spectrum, grid_v, grid_k, phase_velocity, growth_rates):
@@ -81,7 +94,7 @@ def diffusion_coefficient_finite_interval(spectrum, grid_v, grid_k, phase_veloci
                          grid_v.arr[None, :, :]) * grid_k.arr[:, None, None]
     denominator = doppler_shifted_f ** 2.0 + growth_rates[:, None, None] ** 2.0
     # remove terms close to zero
-    growth_rates[np.abs(growth_rates) < 0.003] = 0
+    # growth_rates[np.abs(growth_rates) < 0.003] = 0
     plancheral = (2.0 * np.abs(growth_rates[:, None, None]) *
                   spectrum.arr[:, None, None].get() / denominator)
     # sum the terms

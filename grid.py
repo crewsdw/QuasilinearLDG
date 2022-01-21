@@ -5,9 +5,6 @@ import matplotlib.pyplot as plt
 import scipy.special as sp
 
 
-# import tools.plasma_dispersion as pd
-
-
 class VelocityGrid:
     """ In this experiment, the velocity grid is an LGL quadrature grid """
 
@@ -30,8 +27,6 @@ class VelocityGrid:
         num_elements = np.array([10, 80, 10])
         self.dx_grid = None
         self.create_triple_grid(lows=lows, highs=highs, elements=num_elements)
-        # print(self.arr)
-        # quit()
 
         # stretch / transform elements
         # self.pole_distance = 5
@@ -153,8 +148,10 @@ class VelocityGrid:
 
     def get_local_velocity(self, phase_velocity):
         # find out which element the phase velocity is in
+        # print(phase_velocity)
         idx = self.element_idxs[(self.arr[:, 0] < np.real(phase_velocity)) &
-                                (np.real(phase_velocity) < self.arr[:, -1])]
+                                (np.real(phase_velocity) <= self.arr[:, -1])]
+
         # get local velocity
         velocity = self.J_host[idx] * (phase_velocity - self.mid_points[idx])
 

@@ -39,6 +39,7 @@ class DGFlux:
         # diff = cp.array(np.sqrt(diffusivity))
         # Compute the gradient variable
         grad = grid.J[:, None] * self.compute_grad(distribution, grid=grid)
+        # grad = self.smooth_grad(grad=grad)
         # flux = diffusivity * grad
         flux = cp.array(diffusivity) * grad
         flux_outer = cp.array(diffusivity)[:, :, None] * grad[:, None, :]
@@ -51,7 +52,7 @@ class DGFlux:
         # plt.plot(grid.arr.flatten(), du_dt.flatten(), 'o--')
         # plt.show()
 
-        return grad, du_dt
+        return flux, du_dt
         # self.compute_flux(distribution=distribution, elliptic=elliptic, grid=grid)
         # self.output.arr = (grid.v.J * self.v_flux_lgl(grid=grid, distribution=distribution)
 
@@ -59,6 +60,15 @@ class DGFlux:
         """ Compute the gradient variable using one side of the alternating flux """
         return -1.0 * (basis_product(flux=distribution.arr, basis_arr=grid.local_basis.internal, axis=1) -
                        self.numerical_flux_grad(flux=distribution.arr, grid=grid))
+
+    def smooth_grad(self, grad):
+        avg_holder = cp.zeros_like(grad)
+        avg_holder[1:-1, 0] = 0.5 * (grad[1:-1, 0] + grad[0:-2, -1])
+        avg_holder[1:-1, -1] = 0.5 * (grad[1:-1, -1] + grad[2:, 0])
+        avg_holder[1:-1, 1:-1] = grad[1:-1, 1:-1]
+        avg_holder[0, :] = grad[0, :]
+        avg_holder[-1, :] = grad[-1, :]
+        return avg_holder
 
     # def compute_dudt(self, flux, grid):
     #     return -1.0 * (basis_product(flux=flux, basis_arr=grid.local_basis.internal, axis=1) -

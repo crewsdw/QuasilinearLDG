@@ -65,10 +65,6 @@ class Scalar:
         # self.grad_spectral = np.tensordot(self.grad, grid.fourier_quads, axes=([0, 1], [1, 2]))
         self.grad_spectral = 1j * grid.modes * self.arr_spectral
 
-        # plt.figure()
-        # plt.plot(grid.modes.get(), self.grad_spectral.get(), 'o--')
-        # plt.show()
-
     def hilbert_transform_grad(self, grid):
         analytic = cp.sum(2.0 * self.grad_spectral[None, None, :] * grid.grid_phases, axis=2)
         pv_integral = -1.0 * cp.pi * cp.imag(analytic)
@@ -83,6 +79,24 @@ class Scalar:
         return cp.tensordot(self.arr * (0.5 * grid.device_arr ** 2.0),
                             grid.global_quads / grid.J[:, None], axes=([0, 1], [0, 1]))
 
+    def reinitialize_tail(self, grid, v0, vt0, vb, vtb, chi):
+        maxwellian0 = grid.compute_maxwellian(thermal_velocity=vt0,
+                                              drift_velocity=v0)
+        maxwellian1 = grid.compute_maxwellian(thermal_velocity=vtb,
+                                              drift_velocity=vb)
+        bot = (maxwellian0 + chi * maxwellian1) / (1 + chi)
+        self.arr[grid.arr > 20] = bot[grid.arr > 20]
+        self.arr[grid.arr < -15] = bot[grid.arr < -15]
+
+    def boundary_avg_filter(self):
+        avg_holder = cp.zeros_like(self.arr)
+        avg_holder[1:-1, 0] = 0.5 * (self.arr[1:-1, 0] + self.arr[0:-2, -1])
+        avg_holder[1:-1, -1] = 0.5 * (self.arr[1:-1, -1] + self.arr[2:, 0])
+        avg_holder[1:-1, 1:-1] = self.arr[1:-1, 1:-1]
+        avg_holder[0, :] = self.arr[0, :]
+        avg_holder[-1, :] = self.arr[-1, :]
+        self.arr = avg_holder
+
 
 class EnergySpectrum:
     def __init__(self):
@@ -90,15 +104,22 @@ class EnergySpectrum:
 
     def initialize_spectral_distribution(self, grid, growth_rates, initial_energy):
         self.arr = cp.zeros_like(grid.device_arr)
+        val = 0.0
         # Like growth rates
-        self.arr[growth_rates > 0] = initial_energy * (growth_rates[growth_rates > 0] /
-                                                       cp.amax(growth_rates[growth_rates > 0]))
+        self.arr[growth_rates > val] = initial_energy * (growth_rates[growth_rates > val] /
+                                                       cp.amax(growth_rates[growth_rates > val]))
+        self.arr[growth_rates < val] = cp.amin(self.arr[growth_rates > val])
+        # recaled growth rates
+        # total_variation = cp.amax(growth_rates) - cp.amin(growth_rates)
+        # self.arr = initial_energy * (growth_rates - cp.amin(growth_rates)) / total_variation
+        # self.arr = cp.asarray(self.arr)
         # gaussian function
-        self.arr[:] = initial_energy * cp.exp(-1000 * (grid.device_arr - 0.25) ** 2.0)
+        # self.arr[:] = initial_energy * cp.exp(-1000 * (grid.device_arr - 0.25) ** 2.0)
 
     def initialize_spectral_distribution_velocity(self, grid, initial_energy):
         # self.arr = cp.zeros_like(grid.device_arr)
         # gaussian function
+        initial_energy = initial_energy * np.pi  # * (4.1 ** 2.0)
         self.arr = initial_energy * cp.exp(-5 * (grid.device_arr - 4.1) ** 2.0)
         # remove parts
         self.arr[grid.device_arr < 2] = 0

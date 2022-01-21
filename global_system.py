@@ -24,7 +24,7 @@ class Global:
             indicator[idx] = 1
             self.indicator_dist.arr = indicator.reshape((self.res, self.order))
             # get rhs
-            grad, du_dt = flux.semi_discrete_rhs(distribution=self.indicator_dist, diffusivity=diffusivity, grid=grid)
+            flux2, du_dt = flux.semi_discrete_rhs(distribution=self.indicator_dist, diffusivity=diffusivity, grid=grid)
             self.matrix[:, idx] = du_dt.flatten()
             # re-set indicator
             indicator[idx] = 0
